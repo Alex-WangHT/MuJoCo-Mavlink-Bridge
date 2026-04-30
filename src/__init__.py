@@ -1,17 +1,35 @@
+"""
+MuJoCo-MAVLink Bridge
+
+简洁的硬件在环仿真框架：
+- MAVLink → Plant: 控制量输入 (u)
+- Plant → MAVLink: 状态反馈 (x)
+
+架构说明：
+    ┌──────────┐         ┌──────────┐
+    │  MAVLink │         │  Plant   │
+    │ (外部)   │         │(MuJoCo)  │
+    └────┬─────┘         └────┬─────┘
+         │                    │
+         │  控制量输入 (u)      │
+         ├────────────────────►│
+         │                    │
+         │  状态反馈 (x)        │
+         │◄────────────────────┤
+         │                    │
+
+扩展方式：
+    - 继承 MuJoCoPlant: 自定义被控对象
+    - 继承 MavlinkUDPInterface: 自定义通信接口
+"""
+
 from .core import (
-    Plant,
-    StateVector,
     ControlVector,
-    MavlinkInterface,
-    ControlMapping,
-    StateMapping,
+    StateVector,
     ControlSource,
     StateTarget,
     ControlMappingEntry,
-    StateMappingEntry,
-)
-
-from .implementations import (
+    ControlMapping,
     MuJoCoPlant,
     DEFAULT_ROBOT_XML,
     MavlinkUDPInterface,
@@ -22,19 +40,15 @@ from .simulator import (
     SimulatorConfig,
 )
 
-__version__ = "0.3.0"
+__version__ = "1.0.0"
 
 __all__ = [
-    "Plant",
-    "StateVector",
     "ControlVector",
-    "MavlinkInterface",
-    "ControlMapping",
-    "StateMapping",
+    "StateVector",
     "ControlSource",
     "StateTarget",
     "ControlMappingEntry",
-    "StateMappingEntry",
+    "ControlMapping",
     "MuJoCoPlant",
     "DEFAULT_ROBOT_XML",
     "MavlinkUDPInterface",

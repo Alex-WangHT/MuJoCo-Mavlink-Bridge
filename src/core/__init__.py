@@ -1,11 +1,29 @@
-from .plant import Plant, StateVector, ControlVector
-from .interfaces import MavlinkInterface, ControlMapping, StateMapping
+from .types import (
+    ControlVector,
+    StateVector,
+    ControlSource,
+    StateTarget,
+    ControlMappingEntry,
+    ControlMapping,
+)
+
+from .mujoco_plant import (
+    MuJoCoPlant,
+    DEFAULT_ROBOT_XML,
+)
+
+from .mavlink_interface import (
+    MavlinkUDPInterface,
+)
 
 __all__ = [
-    "Plant",
-    "StateVector",
     "ControlVector",
-    "MavlinkInterface",
+    "StateVector",
+    "ControlSource",
+    "StateTarget",
+    "ControlMappingEntry",
     "ControlMapping",
-    "StateMapping",
+    "MuJoCoPlant",
+    "DEFAULT_ROBOT_XML",
+    "MavlinkUDPInterface",
 ]
