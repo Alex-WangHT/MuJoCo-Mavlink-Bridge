@@ -1,78 +1,43 @@
-from .base import (
-    BaseRobotModel,
-    JointInfo,
-    BodyInfo,
-    SensorInfo,
-    RobotState,
-    BaseController,
-    ControlMode,
-    ControlCommand,
-    ControlTarget,
-    PIDController,
-    PIDGains,
-    BaseMavlinkHandler,
-    BaseMavlinkUDPServer,
-    MavlinkMessage,
-    MessageType,
+from .core import (
+    Plant,
+    StateVector,
+    ControlVector,
+    MavlinkInterface,
     ControlMapping,
+    StateMapping,
+    ControlSource,
+    StateTarget,
+    ControlMappingEntry,
+    StateMappingEntry,
 )
 
-from .mavlink import (
-    MavlinkUDPBridge,
-    MavlinkMessageParser,
-    create_message_from_type,
-    ControlMapper,
-    ControlTargetType,
-    MavlinkControl,
-    MappedControlResult,
-)
-
-from .robot import (
-    MuJoCoModel,
+from .implementations import (
+    MuJoCoPlant,
     DEFAULT_ROBOT_XML,
-    MuJoCoController,
+    MavlinkUDPInterface,
 )
 
-from .simulation import (
+from .simulator import (
     Simulator,
     SimulatorConfig,
-    MavlinkConfig,
-    SimulationConfig,
-    ConnectionType,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
-    "BaseRobotModel",
-    "JointInfo",
-    "BodyInfo",
-    "SensorInfo",
-    "RobotState",
-    "BaseController",
-    "ControlMode",
-    "ControlCommand",
-    "ControlTarget",
-    "PIDController",
-    "PIDGains",
-    "BaseMavlinkHandler",
-    "BaseMavlinkUDPServer",
-    "MavlinkMessage",
-    "MessageType",
+    "Plant",
+    "StateVector",
+    "ControlVector",
+    "MavlinkInterface",
     "ControlMapping",
-    "MavlinkUDPBridge",
-    "MavlinkMessageParser",
-    "create_message_from_type",
-    "ControlMapper",
-    "ControlTargetType",
-    "MavlinkControl",
-    "MappedControlResult",
-    "MuJoCoModel",
+    "StateMapping",
+    "ControlSource",
+    "StateTarget",
+    "ControlMappingEntry",
+    "StateMappingEntry",
+    "MuJoCoPlant",
     "DEFAULT_ROBOT_XML",
-    "MuJoCoController",
+    "MavlinkUDPInterface",
     "Simulator",
     "SimulatorConfig",
-    "MavlinkConfig",
-    "SimulationConfig",
-    "ConnectionType",
 ]
