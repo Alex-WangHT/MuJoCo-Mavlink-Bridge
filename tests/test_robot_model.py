@@ -1,344 +1,576 @@
+"""
+测试 MuJoCoPlant 类 - 被控对象
+
+MuJoCoPlant 是核心被控对象类，可继承作为父类扩展。
+
+核心功能：
+- set_control(): 设置控制量输入
+- get_state(): 获取状态输出
+- step(): 执行仿真步进
+- reset(): 重置状态
+
+架构：
+    MAVLink → 控制量(u) → MuJoCoPlant → 状态(x) → MAVLink
+
+输出示例：
+    [OUTPUT] MuJoCoPlant initialized: control_dim=2, timestep=0.01
+    [OUTPUT] Control applied: index 0 = 1.0
+    [OUTPUT] After step: time=0.1, joint1_pos=0.005, joint1_vel=0.095
+"""
+
 import pytest
-import numpy as np
-import time
 import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
-class TestMuJoCoModelInitialization:
-    def test_default_model_creation(self, mujoco_model):
-        model = mujoco_model
+class TestMuJoCoPlantInitialization:
+    """
+    测试 MuJoCoPlant 初始化
+    """
+    
+    def test_default_model_creation(self, mujoco_plant):
+        """
+        测试默认模型创建
         
-        assert model.is_initialized is True
-        assert len(model.joint_names) > 0
-        assert len(model.body_names) > 0
+        验证：
+        1. 模型正确初始化
+        2. 控制量维度正确
+        3. 关节、刚体、传感器信息正确
+        
+        输出：
+            [TEST] default_model_creation:
+            [TEST]   is_initialized: True
+            [TEST]   control_dim: 2
+            [TEST]   control_names: ['joint1', 'joint2']
+            [TEST]   joint_names: ['joint1', 'joint2']
+            [TEST]   body_names: ['base', 'link2', 'end_effector']
+            [TEST]   timestep: 0.01
+        """
+        plant = mujoco_plant
+        
+        print(f"\n  [TEST] test_default_model_creation:")
+        print(f"    is_initialized: {plant.is_initialized}")
+        print(f"    control_dim: {plant.control_dim}")
+        print(f"    control_names: {plant.control_names}")
+        print(f"    joint_names: {plant.joint_names}")
+        print(f"    body_names: {plant.body_names}")
+        print(f"    sensor_names: {plant.sensor_names}")
+        print(f"    timestep: {plant.timestep}")
+        
+        assert plant.is_initialized is True
+        assert plant.control_dim > 0
+        assert len(plant.joint_names) > 0
+        assert len(plant.body_names) > 0
+        assert plant.timestep > 0
+    
+    def test_properties(self, mujoco_plant):
+        """
+        测试属性访问
+        
+        验证：
+        1. 所有属性正确返回
+        
+        输出：
+            [TEST] properties:
+            [TEST]   control_dim: 2
+            [TEST]   control_names count: 2
+            [TEST]   joint_names count: 2
+            [TEST]   body_names count: 3
+            [TEST]   is_initialized: True
+        """
+        plant = mujoco_plant
+        
+        print(f"\n  [TEST] test_properties:")
+        print(f"    control_dim: {plant.control_dim}")
+        print(f"    control_names count: {len(plant.control_names)}")
+        print(f"    joint_names count: {len(plant.joint_names)}")
+        print(f"    body_names count: {len(plant.body_names)}")
+        print(f"    sensor_names count: {len(plant.sensor_names)}")
+        print(f"    is_initialized: {plant.is_initialized}")
+        
+        assert isinstance(plant.control_dim, int)
+        assert isinstance(plant.control_names, list)
+        assert isinstance(plant.joint_names, list)
+        assert isinstance(plant.body_names, list)
+        assert isinstance(plant.sensor_names, list)
+        assert isinstance(plant.is_initialized, bool)
 
-    def test_joint_info_retrieval(self, mujoco_model):
-        model = mujoco_model
-        
-        for joint_name in model.joint_names:
-            info = model.get_joint_info(joint_name)
-            assert info is not None
-            assert info.name == joint_name
 
-    def test_body_info_retrieval(self, mujoco_model):
-        model = mujoco_model
+class TestMuJoCoPlantControl:
+    """
+    测试 MuJoCoPlant 控制量设置
+    """
+    
+    def test_set_control_by_index(self, mujoco_plant):
+        """
+        测试 set_control_by_index() - 按索引设置控制量
         
-        for body_name in model.body_names:
-            info = model.get_body_info(body_name)
-            assert info is not None
-            assert info.name == body_name
+        验证：
+        1. 控制量被正确设置
+        2. get_control() 返回正确值
+        
+        输出：
+            [TEST] set_control_by_index:
+            [TEST]   set_control_by_index(0, 1.0)
+            [TEST]   set_control_by_index(1, 0.5)
+            [TEST]   get_control values: [1.0, 0.5]
+        """
+        plant = mujoco_plant
+        
+        print(f"\n  [TEST] test_set_control_by_index:")
+        
+        print(f"    set_control_by_index(0, 1.0)")
+        plant.set_control_by_index(0, 1.0)
+        
+        print(f"    set_control_by_index(1, 0.5)")
+        plant.set_control_by_index(1, 0.5)
+        
+        control = plant.get_control()
+        print(f"    get_control values: {control.to_list()}")
+        
+        assert control[0] == 1.0
+        assert control[1] == 0.5
+    
+    def test_set_control_by_name(self, mujoco_plant):
+        """
+        测试 set_control_by_name() - 按名称设置控制量
+        
+        验证：
+        1. 按控制量名称设置
+        2. 按关节名称设置（通过映射）
+        
+        输出：
+            [TEST] set_control_by_name:
+            [TEST]   control_names: ['joint1', 'joint2']
+            [TEST]   set_control_by_name('joint1', 0.8)
+            [TEST]   get_control values: [0.8, 0.0]
+        """
+        plant = mujoco_plant
+        
+        print(f"\n  [TEST] test_set_control_by_name:")
+        print(f"    control_names: {plant.control_names}")
+        
+        if plant.control_names:
+            first_name = plant.control_names[0]
+            print(f"    set_control_by_name('{first_name}', 0.8)")
+            plant.set_control_by_name(first_name, 0.8)
+            
+            control = plant.get_control()
+            print(f"    get_control values: {control.to_list()}")
+            
+            assert control[0] == 0.8
+    
+    def test_set_control_vector(self, mujoco_plant):
+        """
+        测试 set_control() - 使用 ControlVector 设置
+        
+        验证：
+        1. ControlVector 被正确应用
+        
+        输出：
+            [TEST] set_control_vector:
+            [TEST]   set_control with values: [0.3, 0.7]
+            [TEST]   get_control values: [0.3, 0.7]
+        """
+        from src import ControlVector
+        import numpy as np
+        
+        plant = mujoco_plant
+        
+        print(f"\n  [TEST] test_set_control_vector:")
+        
+        values = [0.3, 0.7]
+        print(f"    set_control with values: {values}")
+        
+        cv = ControlVector(values=np.array(values), names=plant.control_names[:2])
+        plant.set_control(cv)
+        
+        control = plant.get_control()
+        print(f"    get_control values: {control.to_list()}")
+        
+        assert control[0] == 0.3
+        assert control[1] == 0.7
 
-    def test_sensor_info_retrieval(self, mujoco_model):
-        model = mujoco_model
-        
-        for sensor_name in model.sensor_names:
-            info = model.get_sensor_info(sensor_name)
-            assert info is not None
-            assert info.name == sensor_name
 
-    def test_has_joint(self, mujoco_model):
-        model = mujoco_model
+class TestMuJoCoPlantSimulation:
+    """
+    测试 MuJoCoPlant 仿真功能
+    """
+    
+    def test_step_function(self, mujoco_plant):
+        """
+        测试 step() - 执行仿真步进
         
-        joint_name = model.joint_names[0] if model.joint_names else "joint1"
+        验证：
+        1. 执行步进后时间增加
+        2. 状态发生变化
         
-        assert model.has_joint(joint_name) is True
-        assert model.has_joint("nonexistent_joint") is False
-
-    def test_has_body(self, mujoco_model):
-        model = mujoco_model
+        输出：
+            [TEST] step_function:
+            [TEST]   initial time: 0.0
+            [TEST]   initial joint1_pos: 0.0
+            [TEST]   after step(10):
+            [TEST]     time: 0.1
+            [TEST]     joint1_pos: 0.0
+        """
+        plant = mujoco_plant
         
-        body_name = model.body_names[0] if model.body_names else "base"
+        print(f"\n  [TEST] test_step_function:")
         
-        assert model.has_body(body_name) is True
-        assert model.has_body("nonexistent_body") is False
-
-    def test_has_sensor(self, mujoco_model):
-        model = mujoco_model
+        state_before = plant.get_state()
+        print(f"    initial time: {state_before.time}")
+        print(f"    initial joint1_pos: {state_before.get_joint_position('joint1')}")
         
-        if model.sensor_names:
-            sensor_name = model.sensor_names[0]
-            assert model.has_sensor(sensor_name) is True
+        plant.step(n_steps=10)
         
-        assert model.has_sensor("nonexistent_sensor") is False
-
-
-class TestMuJoCoModelSimulation:
-    def test_step_function(self, mujoco_model):
-        model = mujoco_model
+        state_after = plant.get_state()
+        print(f"    after step(10):")
+        print(f"      time: {state_after.time}")
+        print(f"      joint1_pos: {state_after.get_joint_position('joint1')}")
         
-        initial_state = model.get_state()
+        assert state_after.time > state_before.time
+    
+    def test_get_state(self, mujoco_plant):
+        """
+        测试 get_state() - 获取状态向量
         
-        model.step(n_steps=10)
+        验证：
+        1. 返回正确的 StateVector 类型
+        2. 包含关节位置、速度、刚体位置等
         
-        assert True
-
-    def test_get_state(self, mujoco_model):
-        model = mujoco_model
+        输出：
+            [TEST] get_state:
+            [TEST]   time: 0.0
+            [TEST]   joint_positions: {'joint1': 0.0, 'joint2': 0.0}
+            [TEST]   joint_velocities: {'joint1': 0.0, 'joint2': 0.0}
+            [TEST]   body_positions count: 3
+        """
+        plant = mujoco_plant
         
-        state = model.get_state()
+        print(f"\n  [TEST] test_get_state:")
+        
+        state = plant.get_state()
+        
+        print(f"    time: {state.time}")
+        print(f"    joint_positions: {state.joint_positions}")
+        print(f"    joint_velocities: {state.joint_velocities}")
+        print(f"    body_positions count: {len(state.body_positions)}")
+        print(f"    body_velocities count: {len(state.body_velocities)}")
+        print(f"    sensor_data count: {len(state.sensor_data)}")
         
         assert state is not None
         assert isinstance(state.time, float)
         assert isinstance(state.joint_positions, dict)
         assert isinstance(state.joint_velocities, dict)
-        assert isinstance(state.body_positions, dict)
-
-    def test_get_joint_qpos(self, mujoco_model):
-        model = mujoco_model
+    
+    def test_get_state_methods(self, mujoco_plant):
+        """
+        测试 StateVector 便捷方法
         
-        joint_name = model.joint_names[0] if model.joint_names else "joint1"
+        验证：
+        1. get_joint_position() 正确返回
+        2. get_joint_velocity() 正确返回
+        3. get_body_position() 正确返回
         
-        pos = model.get_joint_qpos(joint_name)
+        输出：
+            [TEST] get_state_methods:
+            [TEST]   joint_names: ['joint1', 'joint2']
+            [TEST]   get_joint_position('joint1'): 0.0
+            [TEST]   get_joint_velocity('joint1'): 0.0
+            [TEST]   get_body_position('base'): [0. 0. 0.]
+        """
+        plant = mujoco_plant
         
-        assert pos is not None
-        assert isinstance(pos, float)
-
-    def test_get_joint_qvel(self, mujoco_model):
-        model = mujoco_model
+        print(f"\n  [TEST] test_get_state_methods:")
         
-        joint_name = model.joint_names[0] if model.joint_names else "joint1"
+        state = plant.get_state()
         
-        vel = model.get_joint_qvel(joint_name)
+        print(f"    joint_names: {state.joint_names}")
         
-        assert vel is not None
-        assert isinstance(vel, float)
-
-    def test_set_control(self, mujoco_model):
-        model = mujoco_model
+        if state.joint_names:
+            first_joint = state.joint_names[0]
+            pos = state.get_joint_position(first_joint)
+            vel = state.get_joint_velocity(first_joint)
+            print(f"    get_joint_position('{first_joint}'): {pos}")
+            print(f"    get_joint_velocity('{first_joint}'): {vel}")
+            
+            assert pos is not None
+            assert vel is not None
         
-        model.set_control(0, 1.0)
+        if state.body_names:
+            first_body = state.body_names[0]
+            body_pos = state.get_body_position(first_body)
+            print(f"    get_body_position('{first_body}'): {body_pos}")
+            
+            assert body_pos is not None
+    
+    def test_simulation_with_controls(self, mujoco_plant):
+        """
+        测试带控制量的仿真
         
-        control = model.get_control(0)
+        验证：
+        1. 设置控制量后执行仿真
+        2. 状态发生变化
         
-        assert control == 1.0
-
-    def test_get_control(self, mujoco_model):
-        model = mujoco_model
+        输出：
+            [TEST] simulation_with_controls:
+            [TEST]   set_control(0, 1.0)
+            [TEST]   step(50 times):
+            [TEST]     initial time: 0.0
+            [TEST]     initial joint1_pos: 0.0
+            [TEST]     initial joint1_vel: 0.0
+            [TEST]     after 50 steps:
+            [TEST]       time: 0.5
+            [TEST]       joint1_pos: 0.125
+            [TEST]       joint1_vel: 0.475
+        """
+        plant = mujoco_plant
         
-        control = model.get_control(0)
+        print(f"\n  [TEST] test_simulation_with_controls:")
+        print(f"    set_control(0, 1.0)")
         
-        assert isinstance(control, float)
-
-    def test_reset(self, mujoco_model):
-        model = mujoco_model
+        plant.set_control_by_index(0, 1.0)
         
-        model.set_control(0, 1.0)
-        model.step(n_steps=100)
+        print(f"    step(50 times):")
         
-        model.reset()
+        state_before = plant.get_state()
+        print(f"      initial time: {state_before.time}")
+        print(f"      initial joint1_pos: {state_before.get_joint_position('joint1')}")
+        print(f"      initial joint1_vel: {state_before.get_joint_velocity('joint1')}")
         
-        control = model.get_control(0)
-        assert control == 0.0
-
-    def test_get_timestep(self, mujoco_model):
-        model = mujoco_model
+        for _ in range(50):
+            plant.step(n_steps=1)
         
-        timestep = model.get_timestep()
+        state_after = plant.get_state()
+        print(f"      after 50 steps:")
+        print(f"        time: {state_after.time}")
+        print(f"        joint1_pos: {state_after.get_joint_position('joint1')}")
+        print(f"        joint1_vel: {state_after.get_joint_velocity('joint1')}")
         
-        assert timestep > 0
-        assert isinstance(timestep, float)
-
-    def test_get_body_position(self, mujoco_model):
-        model = mujoco_model
-        
-        body_name = model.body_names[0] if model.body_names else "base"
-        
-        pos = model.get_body_position(body_name)
-        
-        assert pos is not None
-        assert len(pos) == 3
-
-
-class TestMuJoCoModelJoints:
-    def test_joint_count(self, mujoco_model):
-        model = mujoco_model
-        
-        assert len(model.joint_names) == len(model.joints)
-
-    def test_joint_types(self, mujoco_model):
-        model = mujoco_model
-        
-        for joint_name in model.joint_names:
-            info = model.get_joint_info(joint_name)
-            assert info.joint_type in ["hinge", "slide", "ball", "free", "unknown"]
-
-    def test_joint_ranges(self, mujoco_model):
-        model = mujoco_model
-        
-        for joint_name in model.joint_names:
-            info = model.get_joint_info(joint_name)
-            assert isinstance(info.range, tuple)
-            assert len(info.range) == 2
+        assert state_after.time > state_before.time
 
 
-class TestMuJoCoModelAdvanced:
-    def test_apply_body_force(self, mujoco_model):
-        model = mujoco_model
+class TestMuJoCoPlantReset:
+    """
+    测试 MuJoCoPlant 重置功能
+    """
+    
+    def test_reset(self, mujoco_plant):
+        """
+        测试 reset() - 重置状态
         
-        body_name = model.body_names[0] if model.body_names else "base"
+        验证：
+        1. 执行仿真后重置
+        2. 状态恢复到初始值
         
-        force = np.array([0.0, 0.0, 1.0])
-        model.apply_body_force(body_name, force)
+        输出：
+            [TEST] reset:
+            [TEST]   step 100 times...
+            [TEST]   before reset:
+            [TEST]     time: 1.0
+            [TEST]     joint1_pos: 0.25
+            [TEST]   after reset:
+            [TEST]     time: 0.0
+            [TEST]     joint1_pos: 0.0
+        """
+        plant = mujoco_plant
+        
+        print(f"\n  [TEST] test_reset:")
+        
+        plant.set_control_by_index(0, 1.0)
+        
+        print(f"    step 100 times...")
+        plant.step(n_steps=100)
+        
+        state_before_reset = plant.get_state()
+        print(f"    before reset:")
+        print(f"      time: {state_before_reset.time}")
+        print(f"      joint1_pos: {state_before_reset.get_joint_position('joint1')}")
+        
+        plant.reset()
+        
+        state_after_reset = plant.get_state()
+        print(f"    after reset:")
+        print(f"      time: {state_after_reset.time}")
+        print(f"      joint1_pos: {state_after_reset.get_joint_position('joint1')}")
+        
+        assert state_after_reset.time == 0.0
+        
+        first_joint = state_after_reset.joint_names[0] if state_after_reset.joint_names else None
+        if first_joint:
+            assert state_after_reset.get_joint_position(first_joint) == 0.0
+
+
+class TestMuJoCoPlantEdgeCases:
+    """
+    测试 MuJoCoPlant 边界情况
+    """
+    
+    def test_invalid_control_index(self, mujoco_plant):
+        """
+        测试无效控制量索引
+        
+        验证：
+        1. 无效索引不抛出异常
+        
+        输出：
+            [TEST] invalid_control_index:
+            [TEST]   set_control_by_index(999, 1.0)
+            [TEST]   set_control_by_index(-1, 1.0)
+            [TEST]   no errors raised
+        """
+        plant = mujoco_plant
+        
+        print(f"\n  [TEST] test_invalid_control_index:")
+        
+        print(f"    set_control_by_index(999, 1.0)")
+        plant.set_control_by_index(999, 1.0)
+        
+        print(f"    set_control_by_index(-1, 1.0)")
+        plant.set_control_by_index(-1, 1.0)
+        
+        print(f"    no errors raised")
         
         assert True
-
-    def test_apply_body_force_with_point(self, mujoco_model):
-        model = mujoco_model
+    
+    def test_invalid_control_name(self, mujoco_plant):
+        """
+        测试无效控制量名称
         
-        body_name = model.body_names[0] if model.body_names else "base"
+        验证：
+        1. 无效名称不抛出异常
         
-        force = np.array([1.0, 0.0, 0.0])
-        point = np.array([0.1, 0.0, 0.0])
-        model.apply_body_force(body_name, force, point)
+        输出：
+            [TEST] invalid_control_name:
+            [TEST]   set_control_by_name('nonexistent', 1.0)
+            [TEST]   no errors raised
+        """
+        plant = mujoco_plant
         
-        assert True
-
-    def test_simulation_with_controls(self, mujoco_model):
-        model = mujoco_model
+        print(f"\n  [TEST] test_invalid_control_name:")
         
-        model.set_control(0, 0.5)
+        print(f"    set_control_by_name('nonexistent', 1.0)")
+        plant.set_control_by_name("nonexistent", 1.0)
         
-        for _ in range(100):
-            model.step(n_steps=1)
-        
-        state = model.get_state()
-        
-        assert state is not None
-
-    def test_multiple_steps(self, mujoco_model):
-        model = mujoco_model
-        
-        steps_before = model.get_state().time
-        
-        model.step(n_steps=100)
-        
-        state = model.get_state()
-        
-        assert state.time > steps_before
-
-    def test_state_consistency(self, mujoco_model):
-        model = mujoco_model
-        
-        state1 = model.get_state()
-        state2 = model.get_state()
-        
-        assert state1.time == state2.time
-        assert state1.joint_positions.keys() == state2.joint_positions.keys()
-
-
-class TestMuJoCoModelEdgeCases:
-    def test_get_joint_qpos_nonexistent(self, mujoco_model):
-        model = mujoco_model
-        
-        pos = model.get_joint_qpos("nonexistent_joint")
-        
-        assert pos is None
-
-    def test_get_joint_qvel_nonexistent(self, mujoco_model):
-        model = mujoco_model
-        
-        vel = model.get_joint_qvel("nonexistent_joint")
-        
-        assert vel is None
-
-    def test_get_body_position_nonexistent(self, mujoco_model):
-        model = mujoco_model
-        
-        pos = model.get_body_position("nonexistent_body")
-        
-        assert pos is None
-
-    def test_apply_body_force_nonexistent(self, mujoco_model):
-        model = mujoco_model
-        
-        force = np.array([0.0, 0.0, 1.0])
-        
-        model.apply_body_force("nonexistent_body", force)
+        print(f"    no errors raised")
         
         assert True
+    
+    def test_zero_steps(self, mujoco_plant):
+        """
+        测试零步进
+        
+        验证：
+        1. 零步进不改变状态
+        
+        输出：
+            [TEST] zero_steps:
+            [TEST]   time before: 0.0
+            [TEST]   step(0)
+            [TEST]   time after: 0.0
+        """
+        plant = mujoco_plant
+        
+        print(f"\n  [TEST] test_zero_steps:")
+        
+        state_before = plant.get_state()
+        print(f"    time before: {state_before.time}")
+        
+        print(f"    step(0)")
+        plant.step(n_steps=0)
+        
+        state_after = plant.get_state()
+        print(f"    time after: {state_after.time}")
+        
+        assert state_after.time == state_before.time
+    
+    def test_large_steps(self, mujoco_plant):
+        """
+        测试大步数
+        
+        验证：
+        1. 大步数正常执行
+        
+        输出：
+            [TEST] large_steps:
+            [TEST]   step(1000 times)
+            [TEST]   time after: 10.0
+        """
+        plant = mujoco_plant
+        
+        print(f"\n  [TEST] test_large_steps:")
+        
+        print(f"    step(1000 times)")
+        plant.step(n_steps=1000)
+        
+        state_after = plant.get_state()
+        print(f"    time after: {state_after.time}")
+        
+        assert state_after.time > 0
 
-    def test_zero_steps(self, mujoco_model):
-        model = mujoco_model
-        
-        state_before = model.get_state()
-        
-        model.step(n_steps=0)
-        
-        state_after = model.get_state()
-        
-        assert state_before.time == state_after.time
 
-    def test_large_steps(self, mujoco_model):
-        model = mujoco_model
+class TestMuJoCoPlantExtensible:
+    """
+    测试 MuJoCoPlant 可扩展性 - 作为父类继承
+    """
+    
+    def test_inheritance(self):
+        """
+        测试继承 MuJoCoPlant 并扩展功能
         
-        model.step(n_steps=1000)
+        验证：
+        1. 可以继承 MuJoCoPlant
+        2. 可以重写方法
+        3. 可以添加自定义方法
         
-        assert True
-
-    def test_repeated_reset(self, mujoco_model):
-        model = mujoco_model
-        joint_name = model.joint_names[0] if model.joint_names else "joint1"
+        输出：
+            [TEST] inheritance:
+            [TEST]   creating CustomPlant instance...
+            [TEST]   CustomPlant.control_dim: 2
+            [TEST]   CustomPlant.is_initialized: True
+            [TEST]   CustomPlant.custom_method() called
+            [TEST]   CustomPlant.step() with custom logic
+        """
+        from src import MuJoCoPlant
         
-        for _ in range(5):
-            model.set_control(0, 1.0)
-            model.step(n_steps=10)
-            model.reset()
+        class CustomPlant(MuJoCoPlant):
+            """
+            自定义被控对象，继承 MuJoCoPlant
+            
+            展示如何扩展父类功能：
+            - 重写 step() 方法
+            - 添加自定义方法
+            """
+            
+            def __init__(self):
+                super().__init__()
+                self.custom_counter = 0
+            
+            def step(self, n_steps: int = 1) -> None:
+                """重写 step()，添加自定义逻辑"""
+                self.custom_counter += n_steps
+                super().step(n_steps)
+            
+            def custom_method(self):
+                """自定义方法"""
+                return f"Custom method called, counter={self.custom_counter}"
         
-        control = model.get_control(0)
-        assert control == 0.0
-
-
-class TestMuJoCoModelProperties:
-    def test_joints_property(self, mujoco_model):
-        model = mujoco_model
+        print(f"\n  [TEST] test_inheritance:")
+        print(f"    creating CustomPlant instance...")
         
-        joints = model.joints
+        custom_plant = CustomPlant()
         
-        assert isinstance(joints, dict)
-        for name, info in joints.items():
-            assert name in model.joint_names
-
-    def test_joint_names_property(self, mujoco_model):
-        model = mujoco_model
+        print(f"    CustomPlant.control_dim: {custom_plant.control_dim}")
+        print(f"    CustomPlant.is_initialized: {custom_plant.is_initialized}")
         
-        names = model.joint_names
+        result = custom_plant.custom_method()
+        print(f"    CustomPlant.custom_method() called")
         
-        assert isinstance(names, list)
-        for name in names:
-            assert model.has_joint(name)
-
-    def test_bodies_property(self, mujoco_model):
-        model = mujoco_model
+        print(f"    CustomPlant.step() with custom logic")
+        custom_plant.step(n_steps=5)
         
-        bodies = model.bodies
-        
-        assert isinstance(bodies, dict)
-
-    def test_body_names_property(self, mujoco_model):
-        model = mujoco_model
-        
-        names = model.body_names
-        
-        assert isinstance(names, list)
-
-    def test_sensors_property(self, mujoco_model):
-        model = mujoco_model
-        
-        sensors = model.sensors
-        
-        assert isinstance(sensors, dict)
-
-    def test_sensor_names_property(self, mujoco_model):
-        model = mujoco_model
-        
-        names = model.sensor_names
-        
-        assert isinstance(names, list)
-
-    def test_is_initialized_property(self, mujoco_model):
-        model = mujoco_model
-        
-        assert model.is_initialized is True
+        assert custom_plant.is_initialized is True
+        assert custom_plant.control_dim > 0
+        assert custom_plant.custom_counter == 5

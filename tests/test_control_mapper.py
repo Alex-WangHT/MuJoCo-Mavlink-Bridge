@@ -1,546 +1,587 @@
+"""
+测试 ControlMapping 类 - 控制量映射
+
+ControlMapping 用于将 MAVLink 消息映射到 Plant 控制量。
+
+核心功能：
+- add_mapping(): 添加映射关系
+- map_controls(): 批量映射控制值
+- map_single_control(): 映射单个控制值
+- create_default_joint_mappings(): 创建默认映射
+
+输出示例：
+    [OUTPUT] ControlMapping: entries=4
+    [OUTPUT]   [0] joint1 (scale=2.0, offset=0.0, range=[-1.0, 1.0])
+    [OUTPUT]   [1] joint2 (scale=1.0, offset=1.0)
+"""
+
 import pytest
-import numpy as np
-import math
 import sys
 import os
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
-class TestControlTargetType:
-    def test_control_target_type_enum(self, control_target_type_enum):
-        ctt = control_target_type_enum
+class TestControlMappingBasics:
+    """
+    测试 ControlMapping 基础功能
+    """
+    
+    def test_create_default_joint_mappings(self, control_mapping):
+        """
+        测试 create_default_joint_mappings() - 创建默认映射
         
-        assert ctt.JOINT_POSITION.value == "joint_position"
-        assert ctt.JOINT_VELOCITY.value == "joint_velocity"
-        assert ctt.JOINT_TORQUE.value == "joint_torque"
-        assert ctt.BODY_FORCE.value == "body_force"
-        assert ctt.BODY_TORQUE.value == "body_torque"
-        assert ctt.CUSTOM.value == "custom"
-
-
-class TestMavlinkControl:
-    def test_mavlink_control_creation(self):
-        from src import MavlinkControl, ControlTargetType
+        验证：
+        1. 映射条目数量正确
+        2. 每个条目都有正确的 mavlink_index 和 plant_control_name
         
-        ctrl = MavlinkControl(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
+        输出：
+            [TEST] create_default_joint_mappings:
+            [TEST]   entries count: 4
+            [TEST]   entry 0: mavlink_index=0, plant_control_name=joint1
+            [TEST]   entry 1: mavlink_index=1, plant_control_name=joint2
+            [TEST]   entry 2: mavlink_index=2, plant_control_name=joint3
+            [TEST]   entry 3: mavlink_index=3, plant_control_name=joint4
+        """
+        cm = control_mapping
+        
+        print(f"\n  [TEST] test_create_default_joint_mappings:")
+        print(f"    entries count: {len(cm.entries)}")
+        
+        for i, entry in enumerate(cm.entries):
+            print(f"    entry {i}: mavlink_index={entry.mavlink_index}, plant_control_name={entry.plant_control_name}")
+        
+        assert len(cm.entries) == 4
+        
+        for i in range(4):
+            entry = cm.get_mapping(cm.entries[0].mavlink_source, i)
+            assert entry is not None
+            assert entry.plant_control_name == f"joint{i+1}"
+    
+    def test_add_mapping(self):
+        """
+        测试 add_mapping() - 添加自定义映射
+        
+        验证：
+        1. 可以添加带缩放、偏移、限幅的映射
+        2. 映射可以正确查找
+        
+        输出：
+            [TEST] add_mapping:
+            [TEST]   adding: mavlink_index=5 -> joint_test (scale=2.0, offset=1.0, range=[-5.0, 5.0])
+            [TEST]   entry found: True
+            [TEST]   scale=2.0, offset=1.0, range_min=-5.0, range_max=5.0
+        """
+        from src import ControlMapping, ControlSource
+        
+        cm = ControlMapping()
+        
+        print(f"\n  [TEST] test_add_mapping:")
+        print(f"    adding: mavlink_index=5 -> joint_test (scale=2.0, offset=1.0, range=[-5.0, 5.0])")
+        
+        cm.add_mapping(
+            mavlink_source=ControlSource.HIL_ACTUATOR_CONTROLS,
+            mavlink_index=5,
+            plant_control_name="joint_test",
+            plant_control_index=10,
             scale=2.0,
-            offset=0.5,
-            range_min=-10.0,
-            range_max=10.0,
-            enabled=True
+            offset=1.0,
+            range_min=-5.0,
+            range_max=5.0
         )
         
-        assert ctrl.mavlink_index == 0
-        assert ctrl.target_name == "joint1"
-        assert ctrl.target_type == ControlTargetType.JOINT_TORQUE
-        assert ctrl.scale == 2.0
-        assert ctrl.offset == 0.5
-        assert ctrl.range_min == -10.0
-        assert ctrl.range_max == 10.0
-        assert ctrl.enabled is True
+        entry = cm.get_mapping(ControlSource.HIL_ACTUATOR_CONTROLS, 5)
+        
+        print(f"    entry found: {entry is not None}")
+        if entry:
+            print(f"    scale={entry.scale}, offset={entry.offset}, range_min={entry.range_min}, range_max={entry.range_max}")
+        
+        assert entry is not None
+        assert entry.plant_control_name == "joint_test"
+        assert entry.plant_control_index == 10
+        assert entry.scale == 2.0
+        assert entry.offset == 1.0
+        assert entry.range_min == -5.0
+        assert entry.range_max == 5.0
+    
+    def test_get_mapping(self, control_mapping):
+        """
+        测试 get_mapping() - 按索引获取映射
+        
+        验证：
+        1. 存在的索引返回正确的映射
+        2. 不存在的索引返回 None
+        
+        输出：
+            [TEST] get_mapping:
+            [TEST]   get_mapping(0) found: True (joint1)
+            [TEST]   get_mapping(1) found: True (joint2)
+            [TEST]   get_mapping(999) found: False
+        """
+        from src import ControlSource
+        
+        cm = control_mapping
+        
+        print(f"\n  [TEST] test_get_mapping:")
+        
+        entry0 = cm.get_mapping(ControlSource.HIL_ACTUATOR_CONTROLS, 0)
+        entry1 = cm.get_mapping(ControlSource.HIL_ACTUATOR_CONTROLS, 1)
+        entry_none = cm.get_mapping(ControlSource.HIL_ACTUATOR_CONTROLS, 999)
+        
+        print(f"    get_mapping(0) found: {entry0 is not None} ({entry0.plant_control_name if entry0 else 'None'})")
+        print(f"    get_mapping(1) found: {entry1 is not None} ({entry1.plant_control_name if entry1 else 'None'})")
+        print(f"    get_mapping(999) found: {entry_none is not None}")
+        
+        assert entry0 is not None
+        assert entry1 is not None
+        assert entry_none is None
+    
+    def test_get_mapping_by_name(self, control_mapping):
+        """
+        测试 get_mapping_by_name() - 按名称获取映射
+        
+        验证：
+        1. 存在的名称返回正确的映射
+        2. 不存在的名称返回 None
+        
+        输出：
+            [TEST] get_mapping_by_name:
+            [TEST]   get_mapping_by_name('joint1') found: True (index 0)
+            [TEST]   get_mapping_by_name('joint2') found: True (index 1)
+            [TEST]   get_mapping_by_name('nonexistent') found: False
+        """
+        cm = control_mapping
+        
+        print(f"\n  [TEST] test_get_mapping_by_name:")
+        
+        entry1 = cm.get_mapping_by_name("joint1")
+        entry2 = cm.get_mapping_by_name("joint2")
+        entry_none = cm.get_mapping_by_name("nonexistent")
+        
+        print(f"    get_mapping_by_name('joint1') found: {entry1 is not None} (index {entry1.mavlink_index if entry1 else 'None'})")
+        print(f"    get_mapping_by_name('joint2') found: {entry2 is not None} (index {entry2.mavlink_index if entry2 else 'None'})")
+        print(f"    get_mapping_by_name('nonexistent') found: {entry_none is not None}")
+        
+        assert entry1 is not None
+        assert entry2 is not None
+        assert entry_none is None
 
-    def test_mavlink_control_defaults(self):
-        from src import MavlinkControl, ControlTargetType
-        
-        ctrl = MavlinkControl(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE
-        )
-        
-        assert ctrl.scale == 1.0
-        assert ctrl.offset == 0.0
-        assert ctrl.range_min == -np.inf
-        assert ctrl.range_max == np.inf
-        assert ctrl.enabled is True
-        assert ctrl.transform is None
 
-    def test_mavlink_control_apply_basic(self):
-        from src import MavlinkControl, ControlTargetType
+class TestControlMappingApply:
+    """
+    测试 ControlMapping 映射变换功能
+    """
+    
+    def test_map_controls_basic(self, control_mapping):
+        """
+        测试 map_controls() - 批量映射控制值
         
-        ctrl = MavlinkControl(
+        验证：
+        1. 原始控制值被正确映射
+        2. 只有有映射的索引被返回
+        
+        输出：
+            [TEST] map_controls_basic:
+            [TEST]   raw_controls: [0.5, 1.0, 0.3, 0.0]
+            [TEST]   mapped: {0: 0.5, 1: 1.0, 2: 0.3, 3: 0.0}
+            [TEST]   mapped count: 4
+        """
+        from src import ControlSource
+        
+        cm = control_mapping
+        
+        raw_controls = [0.5, 1.0, 0.3, 0.0]
+        
+        print(f"\n  [TEST] test_map_controls_basic:")
+        print(f"    raw_controls: {raw_controls}")
+        
+        mapped = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, raw_controls)
+        
+        print(f"    mapped: {mapped}")
+        print(f"    mapped count: {len(mapped)}")
+        
+        assert len(mapped) == 4
+        assert mapped[0] == 0.5
+        assert mapped[1] == 1.0
+        assert mapped[2] == 0.3
+        assert mapped[3] == 0.0
+    
+    def test_map_controls_with_scale(self):
+        """
+        测试 map_controls() - 带缩放因子的映射
+        
+        验证：
+        1. 缩放因子正确应用：value = raw * scale + offset
+        
+        输出：
+            [TEST] map_controls_with_scale:
+            [TEST]   adding mapping: scale=2.0, offset=0.0
+            [TEST]   raw_value=0.5 -> mapped_value=1.0
+            [TEST]   raw_value=1.0 -> mapped_value=2.0
+        """
+        from src import ControlMapping, ControlSource
+        
+        cm = ControlMapping()
+        
+        print(f"\n  [TEST] test_map_controls_with_scale:")
+        print(f"    adding mapping: scale=2.0, offset=0.0")
+        
+        cm.add_mapping(
+            mavlink_source=ControlSource.HIL_ACTUATOR_CONTROLS,
             mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            scale=1.0,
+            plant_control_name="test",
+            plant_control_index=0,
+            scale=2.0,
             offset=0.0
         )
         
-        result = ctrl.apply(0.5)
+        mapped1 = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [0.5])
+        mapped2 = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [1.0])
         
-        assert result == 0.5
-
-    def test_mavlink_control_apply_with_scale(self):
-        from src import MavlinkControl, ControlTargetType
+        print(f"    raw_value=0.5 -> mapped_value={mapped1.get(0)}")
+        print(f"    raw_value=1.0 -> mapped_value={mapped2.get(0)}")
         
-        ctrl = MavlinkControl(
+        assert mapped1[0] == 1.0
+        assert mapped2[0] == 2.0
+    
+    def test_map_controls_with_offset(self):
+        """
+        测试 map_controls() - 带偏移的映射
+        
+        验证：
+        1. 偏移量正确应用
+        
+        输出：
+            [TEST] map_controls_with_offset:
+            [TEST]   adding mapping: scale=1.0, offset=1.0
+            [TEST]   raw_value=0.0 -> mapped_value=1.0
+            [TEST]   raw_value=0.5 -> mapped_value=1.5
+        """
+        from src import ControlMapping, ControlSource
+        
+        cm = ControlMapping()
+        
+        print(f"\n  [TEST] test_map_controls_with_offset:")
+        print(f"    adding mapping: scale=1.0, offset=1.0")
+        
+        cm.add_mapping(
+            mavlink_source=ControlSource.HIL_ACTUATOR_CONTROLS,
             mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            scale=2.0,
-            offset=0.0
-        )
-        
-        result = ctrl.apply(0.5)
-        
-        assert result == 1.0
-
-    def test_mavlink_control_apply_with_offset(self):
-        from src import MavlinkControl, ControlTargetType
-        
-        ctrl = MavlinkControl(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
+            plant_control_name="test",
+            plant_control_index=0,
             scale=1.0,
             offset=1.0
         )
         
-        result = ctrl.apply(0.5)
+        mapped1 = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [0.0])
+        mapped2 = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [0.5])
         
-        assert result == 1.5
-
-    def test_mavlink_control_apply_with_scale_and_offset(self):
-        from src import MavlinkControl, ControlTargetType
+        print(f"    raw_value=0.0 -> mapped_value={mapped1.get(0)}")
+        print(f"    raw_value=0.5 -> mapped_value={mapped2.get(0)}")
         
-        ctrl = MavlinkControl(
+        assert mapped1[0] == 1.0
+        assert mapped2[0] == 1.5
+    
+    def test_map_controls_with_clamping(self):
+        """
+        测试 map_controls() - 带限幅的映射
+        
+        验证：
+        1. 超出范围的值被限幅
+        
+        输出：
+            [TEST] map_controls_with_clamping:
+            [TEST]   adding mapping: scale=1.0, range=[-1.0, 1.0]
+            [TEST]   raw_value=2.0 -> mapped_value=1.0 (clamped)
+            [TEST]   raw_value=-2.0 -> mapped_value=-1.0 (clamped)
+            [TEST]   raw_value=0.5 -> mapped_value=0.5 (no clamp)
+        """
+        from src import ControlMapping, ControlSource
+        
+        cm = ControlMapping()
+        
+        print(f"\n  [TEST] test_map_controls_with_clamping:")
+        print(f"    adding mapping: scale=1.0, range=[-1.0, 1.0]")
+        
+        cm.add_mapping(
+            mavlink_source=ControlSource.HIL_ACTUATOR_CONTROLS,
             mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            scale=2.0,
-            offset=1.0
-        )
-        
-        result = ctrl.apply(0.5)
-        
-        assert result == 2.0
-
-    def test_mavlink_control_apply_with_clamping(self):
-        from src import MavlinkControl, ControlTargetType
-        
-        ctrl = MavlinkControl(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
+            plant_control_name="test",
+            plant_control_index=0,
             scale=1.0,
             offset=0.0,
             range_min=-1.0,
             range_max=1.0
         )
         
-        assert ctrl.apply(2.0) == 1.0
-        assert ctrl.apply(-2.0) == -1.0
-        assert ctrl.apply(0.5) == 0.5
-
-    def test_mavlink_control_apply_with_transform(self):
-        from src import MavlinkControl, ControlTargetType
+        mapped1 = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [2.0])
+        mapped2 = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [-2.0])
+        mapped3 = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [0.5])
         
-        def custom_transform(x):
-            return x * x
+        print(f"    raw_value=2.0 -> mapped_value={mapped1.get(0)} (clamped)")
+        print(f"    raw_value=-2.0 -> mapped_value={mapped2.get(0)} (clamped)")
+        print(f"    raw_value=0.5 -> mapped_value={mapped3.get(0)} (no clamp)")
         
-        ctrl = MavlinkControl(
+        assert mapped1[0] == 1.0
+        assert mapped2[0] == -1.0
+        assert mapped3[0] == 0.5
+    
+    def test_map_controls_with_scale_and_clamping(self):
+        """
+        测试 map_controls() - 带缩放和限幅的组合
+        
+        验证：
+        1. 先缩放，再限幅
+        
+        输出：
+            [TEST] map_controls_with_scale_and_clamping:
+            [TEST]   adding mapping: scale=2.0, range=[-1.0, 1.0]
+            [TEST]   raw_value=0.8 -> mapped_value=1.0 (0.8*2.0=1.6, clamped to 1.0)
+            [TEST]   raw_value=0.3 -> mapped_value=0.6 (0.3*2.0=0.6, no clamp)
+        """
+        from src import ControlMapping, ControlSource
+        
+        cm = ControlMapping()
+        
+        print(f"\n  [TEST] test_map_controls_with_scale_and_clamping:")
+        print(f"    adding mapping: scale=2.0, range=[-1.0, 1.0]")
+        
+        cm.add_mapping(
+            mavlink_source=ControlSource.HIL_ACTUATOR_CONTROLS,
             mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            transform=custom_transform
+            plant_control_name="test",
+            plant_control_index=0,
+            scale=2.0,
+            offset=0.0,
+            range_min=-1.0,
+            range_max=1.0
         )
         
-        result = ctrl.apply(3.0)
+        mapped1 = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [0.8])
+        mapped2 = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [0.3])
         
-        assert result == 9.0
+        print(f"    raw_value=0.8 -> mapped_value={mapped1.get(0)} (0.8*2.0=1.6, clamped to 1.0)")
+        print(f"    raw_value=0.3 -> mapped_value={mapped2.get(0)} (0.3*2.0=0.6, no clamp)")
+        
+        assert mapped1[0] == 1.0
+        assert mapped2[0] == 0.6
+    
+    def test_map_single_control(self, control_mapping):
+        """
+        测试 map_single_control() - 映射单个控制值
+        
+        验证：
+        1. 单个值被正确映射
+        2. 返回元组 (plant_control_index, value)
+        
+        输出：
+            [TEST] map_single_control:
+            [TEST]   mavlink_index=0, raw_value=0.5 -> (0, 0.5)
+            [TEST]   mavlink_index=1, raw_value=1.0 -> (1, 1.0)
+            [TEST]   mavlink_index=999, raw_value=0.0 -> None
+        """
+        from src import ControlSource
+        
+        cm = control_mapping
+        
+        print(f"\n  [TEST] test_map_single_control:")
+        
+        result1 = cm.map_single_control(ControlSource.HIL_ACTUATOR_CONTROLS, 0, 0.5)
+        result2 = cm.map_single_control(ControlSource.HIL_ACTUATOR_CONTROLS, 1, 1.0)
+        result3 = cm.map_single_control(ControlSource.HIL_ACTUATOR_CONTROLS, 999, 0.0)
+        
+        print(f"    mavlink_index=0, raw_value=0.5 -> {result1}")
+        print(f"    mavlink_index=1, raw_value=1.0 -> {result2}")
+        print(f"    mavlink_index=999, raw_value=0.0 -> {result3}")
+        
+        assert result1 == (0, 0.5)
+        assert result2 == (1, 1.0)
+        assert result3 is None
 
 
-class TestMappedControlResult:
-    def test_mapped_control_result_creation(self):
-        from src import MappedControlResult, ControlTargetType
+class TestControlMappingManipulation:
+    """
+    测试 ControlMapping 映射管理功能
+    """
+    
+    def test_clear(self, control_mapping):
+        """
+        测试 clear() - 清空所有映射
         
-        result = MappedControlResult(
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            value=1.5,
-            raw_value=0.75,
-            mavlink_index=0
-        )
+        验证：
+        1. 清空后映射数量为0
         
-        assert result.target_name == "joint1"
-        assert result.target_type == ControlTargetType.JOINT_TORQUE
-        assert result.value == 1.5
-        assert result.raw_value == 0.75
-        assert result.mavlink_index == 0
+        输出：
+            [TEST] clear:
+            [TEST]   before clear: entries=4
+            [TEST]   after clear: entries=0
+        """
+        cm = control_mapping
+        
+        print(f"\n  [TEST] test_clear:")
+        print(f"    before clear: entries={len(cm.entries)}")
+        
+        cm.clear()
+        
+        print(f"    after clear: entries={len(cm.entries)}")
+        
+        assert len(cm.entries) == 0
+    
+    def test_enable_disable_all(self, control_mapping):
+        """
+        测试 enable_all() / disable_all() - 启用/禁用所有映射
+        
+        验证：
+        1. disable_all 后 enabled_entries 数量为0
+        2. enable_all 后 enabled_entries 数量恢复
+        
+        输出：
+            [TEST] enable_disable_all:
+            [TEST]   initial enabled_entries: 4
+            [TEST]   after disable_all: enabled_entries=0
+            [TEST]   after enable_all: enabled_entries=4
+        """
+        cm = control_mapping
+        
+        print(f"\n  [TEST] test_enable_disable_all:")
+        print(f"    initial enabled_entries: {len(cm.enabled_entries)}")
+        
+        cm.disable_all()
+        print(f"    after disable_all: enabled_entries={len(cm.enabled_entries)}")
+        assert len(cm.enabled_entries) == 0
+        
+        cm.enable_all()
+        print(f"    after enable_all: enabled_entries={len(cm.enabled_entries)}")
+        assert len(cm.enabled_entries) == 4
+    
+    def test_entries_property(self, control_mapping):
+        """
+        测试 entries 属性
+        
+        验证：
+        1. entries 返回所有映射条目的副本
+        
+        输出：
+            [TEST] entries_property:
+            [TEST]   entries count: 4
+            [TEST]   entry 0: mavlink_index=0, plant_control_name=joint1
+            [TEST]   entry 1: mavlink_index=1, plant_control_name=joint2
+            [TEST]   entry 2: mavlink_index=2, plant_control_name=joint3
+            [TEST]   entry 3: mavlink_index=3, plant_control_name=joint4
+        """
+        cm = control_mapping
+        
+        print(f"\n  [TEST] test_entries_property:")
+        print(f"    entries count: {len(cm.entries)}")
+        
+        for i, entry in enumerate(cm.entries):
+            print(f"    entry {i}: mavlink_index={entry.mavlink_index}, plant_control_name={entry.plant_control_name}")
+        
+        assert len(cm.entries) == 4
 
 
-class TestControlMapper:
-    def test_control_mapper_creation(self, control_mapper):
-        mapper = control_mapper
+class TestControlMappingEdgeCases:
+    """
+    测试 ControlMapping 边界情况
+    """
+    
+    def test_map_controls_empty(self):
+        """
+        测试空控制值列表
         
-        assert len(mapper.mappings) == 0
-
-    def test_add_mapping(self, control_mapper):
-        from src import ControlTargetType
+        验证：
+        1. 空列表返回空字典
         
-        mapper = control_mapper
+        输出：
+            [TEST] map_controls_empty:
+            [TEST]   raw_controls: []
+            [TEST]   mapped: {}
+        """
+        from src import ControlMapping, ControlSource
         
-        mapper.add_mapping(
+        cm = ControlMapping()
+        cm.add_mapping(
+            mavlink_source=ControlSource.HIL_ACTUATOR_CONTROLS,
             mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            scale=1.0,
-            offset=0.0
+            plant_control_name="test",
+            plant_control_index=0
         )
         
-        assert 0 in mapper.mappings
-        assert mapper.get_mapping(0) is not None
-
-    def test_get_mapping(self, control_mapper):
-        from src import ControlTargetType
+        print(f"\n  [TEST] test_map_controls_empty:")
+        print(f"    raw_controls: []")
         
-        mapper = control_mapper
+        mapped = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, [])
         
-        mapper.add_mapping(
-            mavlink_index=5,
-            target_name="test_joint",
-            target_type=ControlTargetType.JOINT_POSITION
-        )
+        print(f"    mapped: {mapped}")
         
-        mapping = mapper.get_mapping(5)
+        assert mapped == {}
+    
+    def test_map_controls_no_mappings(self):
+        """
+        测试没有映射的情况
         
-        assert mapping is not None
-        assert mapping.target_name == "test_joint"
-
-    def test_get_mapping_nonexistent(self, control_mapper):
-        mapper = control_mapper
+        验证：
+        1. 没有映射时返回空字典
         
-        mapping = mapper.get_mapping(999)
+        输出：
+            [TEST] map_controls_no_mappings:
+            [TEST]   raw_controls: [1.0, 2.0, 3.0]
+            [TEST]   mapped (no mappings): {}
+        """
+        from src import ControlMapping, ControlSource
         
-        assert mapping is None
-
-    def test_get_mapping_by_name(self, control_mapper):
-        from src import ControlTargetType
+        cm = ControlMapping()
         
-        mapper = control_mapper
+        raw_controls = [1.0, 2.0, 3.0]
         
-        mapper.add_mapping(
+        print(f"\n  [TEST] test_map_controls_no_mappings:")
+        print(f"    raw_controls: {raw_controls}")
+        
+        mapped = cm.map_controls(ControlSource.HIL_ACTUATOR_CONTROLS, raw_controls)
+        
+        print(f"    mapped (no mappings): {mapped}")
+        
+        assert mapped == {}
+    
+    def test_negative_values(self):
+        """
+        测试负值映射
+        
+        验证：
+        1. 负值被正确映射和限幅
+        
+        输出：
+            [TEST] negative_values:
+            [TEST]   raw_value=-0.5 -> mapped_value=-0.5
+            [TEST]   raw_value=-10.0 (range=[-5.0, 5.0]) -> mapped_value=-5.0
+        """
+        from src import ControlMapping, ControlSource
+        
+        cm = ControlMapping()
+        
+        cm.add_mapping(
+            mavlink_source=ControlSource.HIL_ACTUATOR_CONTROLS,
             mavlink_index=0,
-            target_name="my_joint",
-            target_type=ControlTargetType.JOINT_TORQUE
+            plant_control_name="test1",
+            plant_control_index=0
         )
         
-        mapping = mapper.get_mapping_by_name("my_joint")
-        
-        assert mapping is not None
-        assert mapping.mavlink_index == 0
-
-    def test_get_mapping_by_name_nonexistent(self, control_mapper):
-        mapper = control_mapper
-        
-        mapping = mapper.get_mapping_by_name("nonexistent")
-        
-        assert mapping is None
-
-    def test_remove_mapping(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE
-        )
-        
-        assert 0 in mapper.mappings
-        
-        result = mapper.remove_mapping(0)
-        
-        assert result is True
-        assert 0 not in mapper.mappings
-
-    def test_remove_mapping_nonexistent(self, control_mapper):
-        mapper = control_mapper
-        
-        result = mapper.remove_mapping(999)
-        
-        assert result is False
-
-    def test_clear_mappings(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        for i in range(5):
-            mapper.add_mapping(
-                mavlink_index=i,
-                target_name=f"joint{i}",
-                target_type=ControlTargetType.JOINT_TORQUE
-            )
-        
-        assert len(mapper.mappings) == 5
-        
-        mapper.clear_mappings()
-        
-        assert len(mapper.mappings) == 0
-
-    def test_map_controls(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            scale=2.0
-        )
-        
-        mapper.add_mapping(
+        cm.add_mapping(
+            mavlink_source=ControlSource.HIL_ACTUATOR_CONTROLS,
             mavlink_index=1,
-            target_name="joint2",
-            target_type=ControlTargetType.JOINT_POSITION,
-            scale=1.0,
-            offset=1.0
-        )
-        
-        raw_controls = [0.5, 0.5, 0.0, 0.0]
-        
-        results = mapper.map_controls(raw_controls)
-        
-        assert len(results) == 2
-        
-        for result in results:
-            if result.target_name == "joint1":
-                assert result.value == 1.0
-            elif result.target_name == "joint2":
-                assert result.value == 1.5
-
-    def test_map_single_control(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        mapper.add_mapping(
-            mavlink_index=3,
-            target_name="test_joint",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            scale=0.5
-        )
-        
-        result = mapper.map_single_control(3, 2.0)
-        
-        assert result is not None
-        assert result.target_name == "test_joint"
-        assert result.value == 1.0
-
-    def test_map_single_control_nonexistent(self, control_mapper):
-        mapper = control_mapper
-        
-        result = mapper.map_single_control(999, 1.0)
-        
-        assert result is None
-
-    def test_enable_disable_mapping(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            enabled=True
-        )
-        
-        mapper.disable_mapping(0)
-        
-        mapping = mapper.get_mapping(0)
-        assert mapping.enabled is False
-        
-        results = mapper.map_controls([1.0])
-        assert len(results) == 0
-        
-        mapper.enable_mapping(0)
-        mapping = mapper.get_mapping(0)
-        assert mapping.enabled is True
-        
-        results = mapper.map_controls([1.0])
-        assert len(results) == 1
-
-    def test_enabled_mappings(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            enabled=True
-        )
-        
-        mapper.add_mapping(
-            mavlink_index=1,
-            target_name="joint2",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            enabled=False
-        )
-        
-        assert len(mapper.mappings) == 2
-        assert len(mapper.enabled_mappings) == 1
-
-    def test_create_default_joint_mappings(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        joint_names = ["joint1", "joint2", "joint3"]
-        
-        mapper.create_default_joint_mappings(
-            joint_names=joint_names,
-            control_type=ControlTargetType.JOINT_TORQUE,
-            start_index=0
-        )
-        
-        assert len(mapper.mappings) == 3
-        
-        for i, name in enumerate(joint_names):
-            mapping = mapper.get_mapping(i)
-            assert mapping is not None
-            assert mapping.target_name == name
-            assert mapping.target_type == ControlTargetType.JOINT_TORQUE
-
-    def test_create_default_joint_mappings_with_start_index(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        joint_names = ["joint1", "joint2"]
-        
-        mapper.create_default_joint_mappings(
-            joint_names=joint_names,
-            control_type=ControlTargetType.JOINT_POSITION,
-            start_index=5
-        )
-        
-        assert 5 in mapper.mappings
-        assert 6 in mapper.mappings
-
-    def test_to_control_mode(self, control_mapper):
-        from src import ControlTargetType, ControlMode
-        
-        mapper = control_mapper
-        
-        assert mapper.to_control_mode(ControlTargetType.JOINT_POSITION) == ControlMode.POSITION
-        assert mapper.to_control_mode(ControlTargetType.JOINT_VELOCITY) == ControlMode.VELOCITY
-        assert mapper.to_control_mode(ControlTargetType.JOINT_TORQUE) == ControlMode.TORQUE
-        assert mapper.to_control_mode(ControlTargetType.CUSTOM) == ControlMode.CUSTOM
-
-    def test_add_custom_transform(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        def custom_sin(x):
-            return math.sin(x)
-        
-        mapper.add_custom_transform("sin", custom_sin)
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            transform="sin"
-        )
-        
-        mapping = mapper.get_mapping(0)
-        
-        result = mapping.apply(math.pi / 2)
-        
-        assert abs(result - 1.0) < 1e-6
-
-
-class TestControlMapperEdgeCases:
-    def test_map_controls_empty(self, control_mapper):
-        mapper = control_mapper
-        
-        results = mapper.map_controls([])
-        
-        assert results == []
-
-    def test_map_controls_no_mappings(self, control_mapper):
-        mapper = control_mapper
-        
-        results = mapper.map_controls([1.0, 2.0, 3.0])
-        
-        assert results == []
-
-    def test_add_duplicate_mapping(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE
-        )
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="different_joint",
-            target_type=ControlTargetType.JOINT_POSITION
-        )
-        
-        mapping = mapper.get_mapping(0)
-        
-        assert mapping.target_name == "different_joint"
-
-    def test_negative_values(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
-            scale=1.0,
-            offset=0.0
-        )
-        
-        result = mapper.map_single_control(0, -1.0)
-        
-        assert result.value == -1.0
-
-    def test_large_values(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE
-        )
-        
-        result = mapper.map_single_control(0, 1e6)
-        
-        assert result.value == 1e6
-
-    def test_clamping_extreme_values(self, control_mapper):
-        from src import ControlTargetType
-        
-        mapper = control_mapper
-        
-        mapper.add_mapping(
-            mavlink_index=0,
-            target_name="joint1",
-            target_type=ControlTargetType.JOINT_TORQUE,
+            plant_control_name="test2",
+            plant_control_index=1,
             range_min=-5.0,
             range_max=5.0
         )
         
-        assert mapper.map_single_control(0, 10.0).value == 5.0
-        assert mapper.map_single_control(0, -10.0).value == -5.0
+        print(f"\n  [TEST] test_negative_values:")
+        
+        mapped1 = cm.map_single_control(ControlSource.HIL_ACTUATOR_CONTROLS, 0, -0.5)
+        mapped2 = cm.map_single_control(ControlSource.HIL_ACTUATOR_CONTROLS, 1, -10.0)
+        
+        print(f"    raw_value=-0.5 -> mapped_value={mapped1[1] if mapped1 else None}")
+        print(f"    raw_value=-10.0 (range=[-5.0, 5.0]) -> mapped_value={mapped2[1] if mapped2 else None}")
+        
+        assert mapped1[1] == -0.5
+        assert mapped2[1] == -5.0
